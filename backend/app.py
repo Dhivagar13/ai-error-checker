@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from google import genai
 from google.genai import types
+from groq import Groq
 
 load_dotenv()
 
@@ -17,11 +18,11 @@ def get_mock_response(language, error_msg, depth, tone):
     """Provides a realistic simulation if all AI providers are out of quota."""
     return {
         "1. Error Name": f"Potential {language} Syntax/Logic Exception",
-        "2. Simple Explanation": f"[SIMULATED] Depth: {depth}, Tone: {tone}. You're seeing this because your AI API Quota has been exceeded.",
+        "2. Simple Explanation": f"[SIMULATED] Depth: {depth}, Tone: {tone}. You're seeing this because your AI API Quotas (OpenAI/Gemini/Groq) have been exceeded.",
         "3. Why This Error Happens": "The error message you pasted indicates an issue with how the code is structured or how data is being accessed at runtime.",
-        "4. How to Fix It": "Check your API billing dashboard. For the code itself, ensure all variables are defined before use.",
+        "4. How to Fix It": "Check your API billing dashboards or top up your credits. For the code itself, ensure all variables are defined before use.",
         "5. Example Code Fix": f"// Simulated fix for {language} ({tone} tone)\nconsole.log('Ensure your API keys are active!');",
-        "6. Prevention Tips": "Keep a small balance in your OpenAI account or check Gemini API region availability.",
+        "6. Prevention Tips": "Keep a small balance in your accounts or check API region availability.",
         "is_simulated": True
     }
 
@@ -58,13 +59,15 @@ IMPORTANT: Return ONLY the JSON object.
 
     openai_key = os.environ.get("OPENAI_API_KEY")
     gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    groq_key = os.environ.get("GROQ_API_KEY")
 
-    # Debug: Print masked keys to verify environment variables are loading
+    # Debug: Print masked keys
     def mask_key(k):
         return f"{k[:8]}...{k[-4:]}" if k and len(k) > 12 else "NOT_SET"
     
     print(f"DEBUG: OpenAI Key: {mask_key(openai_key)}")
     print(f"DEBUG: Gemini Key: {mask_key(gemini_key)}")
+    print(f"DEBUG: Groq Key:   {mask_key(groq_key)}")
 
     # 1. Try OpenAI
     if openai_key and len(openai_key) > 20:
@@ -83,13 +86,7 @@ IMPORTANT: Return ONLY the JSON object.
             print("SUCCESS: OpenAI request successful.")
             return json.loads(response.choices[0].message.content)
         except Exception as e:
-            print(f"ERROR: OpenAI Analysis Failed")
-            print(f"Exception Type: {type(e).__name__}")
-            print(f"Error Detail: {str(e)}")
-            if any(x in str(e).lower() for x in ["quota", "429", "limit", "insufficient"]):
-                print(">>> STATUS: OpenAI Quota Exceeded or Account Balance Low.")
-            elif "auth" in str(e).lower() or "api_key" in str(e).lower():
-                print(">>> STATUS: OpenAI Authentication/API Key Issue.")
+            print(f"ERROR: OpenAI Analysis Failed: {str(e)}")
             
     # 2. Try Gemini
     if gemini_key:
@@ -105,15 +102,27 @@ IMPORTANT: Return ONLY the JSON object.
                 print(f"SUCCESS: Gemini ({model_name}) request successful.")
                 return json.loads(response.text)
             except Exception as e:
-                print(f"ERROR: Gemini {model_name} Failed")
-                print(f"Error Detail: {str(e)}")
-                if "429" in str(e) or "quota" in str(e).lower():
-                    print(f">>> STATUS: Gemini Quota Exceeded.")
-                    break
-                elif "api key" in str(e).lower() or "not found" in str(e).lower():
-                    print(f">>> STATUS: Gemini API Key invalid or restricted.")
+                print(f"ERROR: Gemini {model_name} Failed: {str(e)}")
 
-    # 3. Final Fallback: Simulation Mode
+    # 3. Try Groq (Llama 3)
+    if groq_key:
+        try:
+            print(f"--- Attempting Groq (llama-3.3-70b-versatile) ---")
+            client = Groq(api_key=groq_key)
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": "You are a helpful software debugging assistant that outputs ONLY JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            print("SUCCESS: Groq request successful.")
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            print(f"ERROR: Groq Analysis Failed: {str(e)}")
+
+    # 4. Final Fallback: Simulation Mode
     print("!!! CRITICAL: ALL AI PROVIDERS FAILED - ENTERING SIMULATION MODE !!!")
     return get_mock_response(language, error_msg, depth, tone)
 
