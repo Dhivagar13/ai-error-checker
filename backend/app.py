@@ -90,7 +90,7 @@ IMPORTANT: Return ONLY the JSON object.
             
     # 2. Try Gemini
     if gemini_key:
-        for model_name in ['gemini-2.0-flash', 'gemini-1.5-flash']:
+        for model_name in ['gemini-2.0-flash', 'gemini-2.0-flash-lite']:
             try:
                 print(f"--- Attempting Gemini ({model_name}) ---")
                 client = genai.Client(api_key=gemini_key)
