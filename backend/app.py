@@ -59,10 +59,17 @@ IMPORTANT: Return ONLY the JSON object.
     openai_key = os.environ.get("OPENAI_API_KEY")
     gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 
+    # Debug: Print masked keys to verify environment variables are loading
+    def mask_key(k):
+        return f"{k[:8]}...{k[-4:]}" if k and len(k) > 12 else "NOT_SET"
+    
+    print(f"DEBUG: OpenAI Key: {mask_key(openai_key)}")
+    print(f"DEBUG: Gemini Key: {mask_key(gemini_key)}")
+
     # 1. Try OpenAI
     if openai_key and len(openai_key) > 20:
         try:
-            print(f"Attempting OpenAI analysis (Depth: {depth}, Tone: {tone})...")
+            print(f"--- Attempting OpenAI (gpt-4o-mini) ---")
             client = OpenAI(api_key=openai_key)
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -73,32 +80,41 @@ IMPORTANT: Return ONLY the JSON object.
                     {"role": "user", "content": prompt}
                 ]
             )
+            print("SUCCESS: OpenAI request successful.")
             return json.loads(response.choices[0].message.content)
         except Exception as e:
-            if any(x in str(e).lower() for x in ["quota", "429", "limit"]):
-                print("OpenAI Quota Exceeded. Trying Gemini...")
-            else:
-                print(f"OpenAI Failed: {e}")
-
+            print(f"ERROR: OpenAI Analysis Failed")
+            print(f"Exception Type: {type(e).__name__}")
+            print(f"Error Detail: {str(e)}")
+            if any(x in str(e).lower() for x in ["quota", "429", "limit", "insufficient"]):
+                print(">>> STATUS: OpenAI Quota Exceeded or Account Balance Low.")
+            elif "auth" in str(e).lower() or "api_key" in str(e).lower():
+                print(">>> STATUS: OpenAI Authentication/API Key Issue.")
+            
     # 2. Try Gemini
     if gemini_key:
         for model_name in ['gemini-2.0-flash', 'gemini-1.5-flash']:
             try:
-                print(f"Attempting Gemini analysis with {model_name}...")
+                print(f"--- Attempting Gemini ({model_name}) ---")
                 client = genai.Client(api_key=gemini_key)
                 response = client.models.generate_content(
                     model=model_name,
                     contents=prompt,
                     config=types.GenerateContentConfig(response_mime_type='application/json'),
                 )
+                print(f"SUCCESS: Gemini ({model_name}) request successful.")
                 return json.loads(response.text)
             except Exception as e:
-                print(f"Gemini {model_name} failed: {e}")
+                print(f"ERROR: Gemini {model_name} Failed")
+                print(f"Error Detail: {str(e)}")
                 if "429" in str(e) or "quota" in str(e).lower():
+                    print(f">>> STATUS: Gemini Quota Exceeded.")
                     break
+                elif "api key" in str(e).lower() or "not found" in str(e).lower():
+                    print(f">>> STATUS: Gemini API Key invalid or restricted.")
 
     # 3. Final Fallback: Simulation Mode
-    print("--- ALL AI PROVIDERS FAILED (QUOTA) ---")
+    print("!!! CRITICAL: ALL AI PROVIDERS FAILED - ENTERING SIMULATION MODE !!!")
     return get_mock_response(language, error_msg, depth, tone)
 
 @app.route('/explain-error', methods=['POST'])
